@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
 
 # lambda func : RequestSpotInstances
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.request_spot_instances
 # Python version 3.6 ~
+# boto version 1.14.x ~
 
 import boto3
 
 # SpotFleet、インスタンスタイプetc設定
-spot_price = "0.05"
-request_type = "one-time"
-duration_minutes = 60
-image_id = "ami-xxxxxxxxxxxxxxx"
-security_groups = ["sg-xxxxxxxxxxxxx"]
-incetance_type = "t3.medium"
+spot_price = "0.02"
+request_type = "persistent"
+# ここではAmazon Linux2 Latest
+image_id = "ami-0cc75a8978fbbc969"
+# 配列で設定するので複数付与することもできる
+security_groups = ["sg-zzzzzzzzzzz"]
+incetance_type = "t2.medium"
 availability_zone = "ap-northeast-1a"
-subnet_id = "subnet-xxxxxxxxxxxx"
+subnet_id = "subnet-zzzzzzzz"
+key_name = "hogehoge-key"
 
 client = boto3.client('ec2')
 
@@ -25,7 +29,6 @@ def lambda_handler(event, context):
         SpotPrice=spot_price,
         InstanceCount=1,
         Type=request_type,
-        BlockDurationMinutes=duration_minutes,
         LaunchSpecification={
             "ImageId": image_id,
             "SecurityGroupIds": security_groups,
@@ -33,15 +36,46 @@ def lambda_handler(event, context):
             "Placement": {
                 "AvailabilityZone": availability_zone
             },
-            "SubnetId": subnet_id
-        }
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/xvda",
+                    "Ebs": {
+                        # 単位 GB
+                        "VolumeSize": 30,
+                        # 汎用SSD
+                        "VolumeType": "gp2",
+                        # インスタンス終了時にEBSも削除する
+                        "DeleteOnTermination": True
+                    }
+                }
+            ],
+            "SubnetId": subnet_id,
+            "KeyName": key_name
+        },
+        TagSpecifications=[
+            {
+                "ResourceType": "spot-instances-request",
+                # ここに個々人の名前が入るように設定するとか
+                'Tags': [
+                    {
+                        'Key': 'Name',
+                        'Value': 'kento-test'
+                    },
+                ]
+            },
+        ],
+        # 入札金額を下回った場合、停止にする(補足：terminate にすると終了)
+        InstanceInterruptionBehavior="stop"
     )
+
+    # ここではリクエストIDだけ撮っているが、レスポンスにはインスタンスIDが含まれるのでインスタンスIDで絞り込んでEIP付与、タグ付与とか色々できる
+    # インスタンス作成後の運用はlambdaでタグがついたインスタンスの起動、停止ロジックでOK
     request = {
         "requestId": response['ResponseMetadata']['RequestId']
     }
 
     # スポットリクエストID
-    # 戻り値例：{"requestId": "sir-bbbbbbb"}
+    # 戻り値例：{"requestId": "aaaaa-bbbbbbb"}
     return request
 
 
